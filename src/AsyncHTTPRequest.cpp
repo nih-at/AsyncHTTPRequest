@@ -271,30 +271,30 @@ void AsyncHTTPRequest::handleError(Error new_error, const char* detail) {
 
         switch (error()) {
             case ERROR_OK:
-                last_error_string = "No error";
+                lastErrorString = "No error";
                 break;
             case ERROR_SCHEME:
-                last_error_string = "Unsupported URL scheme";
+                lastErrorString = "Unsupported URL scheme";
                 break;
             case ERROR_IN_USE:
-                last_error_string = "Request already started";
+                lastErrorString = "Request already started";
                 break;
             case ERROR_CANNOT_CONNECT:
-                last_error_string = "Cannot connect";
+                lastErrorString = "Cannot connect";
                 break;
             case ERROR_TIMEOUT:
-                last_error_string = "Request timed out";
+                lastErrorString = "Request timed out";
                 break;
             case ERROR_CONNECTION_CLOSED:
-                last_error_string = "Server closed connection";
+                lastErrorString = "Server closed connection";
                 break;
         }
         if (detail) {
-            last_error_string += ": ";
-            last_error_string += detail;
+            lastErrorString += ": ";
+            lastErrorString += detail;
         }
 
-        DEBUG("Error: " + last_error_string.c_str());
+        DEBUG("Error: " + lastErrorString.c_str());
 
         if (call_handler) {
             notify_error = true;

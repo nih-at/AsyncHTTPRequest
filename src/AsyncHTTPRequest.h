@@ -82,7 +82,7 @@ public:
     const char* contentType() const { return state > RECEIVING_HEADERS ? response_content_type.c_str() : nullptr; }
     size_t contentLength() const;
     Error error() const { return current_error; }
-    const char* error_string() const { return last_error_string.c_str(); }
+    const char* errorString() const { return lastErrorString.c_str(); }
     size_t read(char* data, size_t length);
 
 private:
@@ -129,7 +129,7 @@ private:
     State state = EMPTY;
     Error current_error = ERROR_OK;
     int error_code = 0;
-    std::string last_error_string;
+    std::string lastErrorString;
     AsyncSSLClient* client = nullptr;
 
     Buffer buffer;
