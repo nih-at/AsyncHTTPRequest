@@ -5,11 +5,13 @@
 #ifndef ASYNCHTTPREQUEST_ASYNCHTTPREQUEST_H
 #define ASYNCHTTPREQUEST_ASYNCHTTPREQUEST_H
 
+#define USE_SSL 1
+
 #include <functional>
 #include <string>
 
 #include <Arduino.h>
-#ifdef USE_SSL
+#if USE_SSL
 #include <AsyncTCP_SSL.hpp>
 #else
 #include <AsyncTCP.h>
@@ -59,6 +61,7 @@ public:
         Fragment *last = nullptr;
     };
 
+    typedef std::function<void(AsyncHTTPRequest* request, int status)> BeginResponseHandler;
     typedef std::function<void(AsyncHTTPRequest* request)> CompletionHandler;
     typedef std::function<void(AsyncHTTPRequest* request)> DataHandler;
     typedef std::function<void(AsyncHTTPRequest* request, Error error)> ErrorHandler;
@@ -73,6 +76,7 @@ public:
     void abort();
 
     // These handlers will be called on a background thread.
+    void onBeginResponse(BeginResponseHandler handler) { beginResponseHandler = handler; }
     void onCompletion(CompletionHandler handler) {completionHandler = handler; }
     void onError(ErrorHandler handler) { errorHandler = handler; }
     void onReceivedData(DataHandler handler) { receivedDataHandler = handler; }
@@ -116,10 +120,11 @@ private:
         void unlock();
 
     private:
-        SemaphoreHandle_t mutex;
-        bool locked;
+        SemaphoreHandle_t mutex = nullptr;
+        bool locked = false;
     };
 
+    BeginResponseHandler beginResponseHandler = nullptr;
     CompletionHandler completionHandler = nullptr;
     ErrorHandler errorHandler = nullptr;
     DataHandler receivedDataHandler = nullptr;

@@ -4,17 +4,24 @@
 
 #include "AsyncHTTPRequest.h"
 
-#ifdef USE_SSL
+#if USE_SSL
 #include <AsyncTCP_SSL.h>
 #endif
 
-#define DEBUG_HTTP
+//#define DEBUG_HTTP
+//#define DEBUG_HTTP_MUTEX
 
 #ifdef DEBUG_HTTP
 #define DEBUG(x) Serial.println(String("HTTP: ") + x)
 #else
 #define DEBUG(x) ((void)0)
 #endif
+#if defined(DEBUG_HTTP) && defined(DEBUG_HTTP_MUTEX)
+#define DEBUG_MUTEX(x) Serial.println(String("HTTP: ") + x)
+#else
+#define DEBUG_MUTEX(x) ((void)0)
+#endif
+
 
 #define HTTP_MAX_LINE_LENGTH 512
 
@@ -50,12 +57,15 @@ size_t AsyncHTTPRequest::contentLength() const {
 size_t AsyncHTTPRequest::read(char* data, size_t length) {
     auto lock = Lock(mutex);
 
+    size_t bytes_read = 0;
+
     if (responseBody) {
-        return responseBody->read(data, length);
+        bytes_read = responseBody->read(data, length);
     }
-    else {
-        return 0;
-    }
+
+    DEBUG("Reading " + length + " bytes, returning " + bytes_read);
+
+    return bytes_read;
 }
 
 
@@ -83,6 +93,11 @@ AsyncHTTPRequest::Error AsyncHTTPRequest::send(const char* method, const char* u
     }
 
     mutex = xSemaphoreCreateMutex();
+    if (mutex == nullptr) {
+        handleError(ERROR_CANNOT_CONNECT, "can't create mutex");
+        return error();
+    }
+
     client = new AsyncSSLClient();
     client->onAck([this](void *arg, AsyncSSLClient *client, size_t len, uint32_t time) {
                 this->handleAck(len, time);
@@ -321,6 +336,9 @@ void AsyncHTTPRequest::parseHeader(const char *line) {
     if (line[0] == '\0') {
         DEBUG("End of headers");
         state = RECEIVING_BODY;
+        if (beginResponseHandler) {
+            beginResponseHandler(this, status());
+        }
         char data[HTTP_BUFFER_FRAGMENT_SIZE];
         size_t length;
         while ((length = buffer.read(data, sizeof(data))) > 0) {
@@ -715,15 +733,20 @@ void AsyncHTTPRequest::post_notifications() {
 
 
 AsyncHTTPRequest::Lock::Lock(SemaphoreHandle_t mutex): mutex(mutex) {
-    DEBUG("Locking mutex.");
-    xSemaphoreTake(mutex, portMAX_DELAY);
-    locked = true;
-    DEBUG("Mutex locked.");
+    if (mutex == nullptr) {
+        DEBUG("Locking NULL mutex.");
+    }
+    else {
+        DEBUG_MUTEX("Locking mutex.");
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        locked = true;
+        DEBUG_MUTEX("Mutex locked.");
+    }
 }
 
 void AsyncHTTPRequest::Lock::unlock() {
     if (locked) {
-        DEBUG("Unlocking mutex.");
+        DEBUG_MUTEX("Unlocking mutex.");
         xSemaphoreGive(mutex);
         locked = false;
     }
