@@ -56,6 +56,7 @@ AsyncHTTPRequest::~AsyncHTTPRequest() {
     }
     delete requestBody;
     delete responseBody;
+    delete response_reader;
 }
 
 void AsyncHTTPRequest::abort() {
@@ -91,7 +92,6 @@ size_t AsyncHTTPRequest::read(char* data, size_t length) {
 
     return bytes_read;
 }
-
 
 
 AsyncHTTPRequest::Error AsyncHTTPRequest::send(const char* method, const char* url_string, const char* content_type, Buffer* body) {
@@ -361,6 +361,7 @@ void AsyncHTTPRequest::parseHeader(const char *line) {
         DEBUG("End of headers");
         state = RECEIVING_BODY;
         if (beginResponseHandler) {
+            DEBUG("Posting beginResponse notification.");
             beginResponseHandler(this, status());
         }
         char data[HTTP_BUFFER_FRAGMENT_SIZE];
@@ -440,6 +441,11 @@ void AsyncHTTPRequest::processBodyData(char* data, size_t length) {
     dataReceived += length;
 
     notify_data = true;
+    if (reader_task != nullptr) {
+        DEBUG("Waking up reader.");
+        xTaskNotifyGive(reader_task);
+        reader_task = nullptr;
+    }
 
     if (haveContentLength && dataReceived >= responseContentLength) {
         requestCompleted();
@@ -525,7 +531,7 @@ bool AsyncHTTPRequest::sendData(Buffer* buffer) {
 #endif
     size_t to_send = client->space();
 
-    DEBUG("Sending " + to_send + " bytes");
+    DEBUG("Sending up to " + to_send + " bytes");
 
     while (to_send > 0) {
         auto length = to_send;
@@ -778,4 +784,50 @@ void AsyncHTTPRequest::Lock::unlock() {
 
 AsyncHTTPRequest::Lock::~Lock() {
     unlock();
+}
+
+
+AsyncHTTPRequest::Reader* AsyncHTTPRequest::responseReader() {
+    auto lock = Lock(mutex);
+
+    if (response_reader == nullptr) {
+        DEBUG("Creating reader.");
+        response_reader = new Reader(this);
+    }
+    return response_reader;
+}
+
+int AsyncHTTPRequest::Reader::read() {
+    char c;
+
+    if (readBytes(&c, 1) == 0) {
+        return -1;
+    }
+    return c;
+}
+
+size_t AsyncHTTPRequest::Reader::readBytes(char* data, size_t length) {
+    size_t filled = 0;
+
+    while (filled < length) {
+        auto lock = Lock(request->mutex);
+
+        if (request->responseBody != nullptr) {
+            filled += request->responseBody->read(data + filled, length - filled);
+        }
+
+        if (filled < length) {
+            if (request->isComplete()) {
+                DEBUG("Reader read all data.");
+                break;
+            }
+
+            request->reader_task = xTaskGetCurrentTaskHandle();
+            lock.unlock();
+            DEBUG("Reader waiting for more data.");
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        }
+    }
+
+    return filled;
 }

@@ -85,6 +85,17 @@ public:
         Fragment *last = nullptr;
     };
 
+    class Reader {
+    public:
+        Reader(AsyncHTTPRequest* request): request(request) {}
+
+        int read();
+        size_t readBytes(char* buffer, size_t length);
+
+    private:
+        AsyncHTTPRequest* request;
+    };
+
     typedef std::function<void(AsyncHTTPRequest* request, int status)> BeginResponseHandler;
     typedef std::function<void(AsyncHTTPRequest* request)> CompletionHandler;
     typedef std::function<void(AsyncHTTPRequest* request)> DataHandler;
@@ -104,6 +115,8 @@ public:
     void onCompletion(CompletionHandler handler) {completionHandler = handler; }
     void onError(ErrorHandler handler) { errorHandler = handler; }
     void onReceivedData(DataHandler handler) { receivedDataHandler = handler; }
+
+    Reader* responseReader();
 
     bool isComplete() const { return state == ERROR || state == COMPLETE; }
     int status() const { return httpStatus; }
@@ -153,7 +166,10 @@ private:
     ErrorHandler errorHandler = nullptr;
     DataHandler receivedDataHandler = nullptr;
 
+    Reader* response_reader = nullptr;
+
     SemaphoreHandle_t mutex = nullptr;
+    TaskHandle_t reader_task = nullptr;
 
     State state = EMPTY;
     Error current_error = ERROR_OK;
