@@ -189,6 +189,7 @@ private:
     size_t dataReceived = 0;
     bool haveContentLength = false;
     Buffer* responseBody = nullptr;
+    size_t unacknowledged_length = 0;
 
     std::string response_content_type;
 
@@ -196,6 +197,7 @@ private:
     bool notify_complete = false;
     bool notify_error = false;
 
+    size_t read_prelocked(char* data, size_t length);
 
     void parseHeader(const char* line);
     static size_t parseInteger(const char* string);

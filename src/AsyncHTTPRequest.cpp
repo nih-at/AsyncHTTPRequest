@@ -48,6 +48,7 @@
 
 
 #define HTTP_MAX_LINE_LENGTH 512
+#define HTTP_READ_AHEAD HTTP_BUFFER_FRAGMENT_SIZE
 
 AsyncHTTPRequest::~AsyncHTTPRequest() {
     close_client();
@@ -82,13 +83,24 @@ size_t AsyncHTTPRequest::contentLength() const {
 size_t AsyncHTTPRequest::read(char* data, size_t length) {
     auto lock = Lock(mutex);
 
+    return read_prelocked(data, length);
+}
+
+
+size_t AsyncHTTPRequest::read_prelocked(char* data, size_t length) {
     size_t bytes_read = 0;
 
     if (responseBody) {
         bytes_read = responseBody->read(data, length);
+
+        if (unacknowledged_length > 0 && client != nullptr && responseBody->available() < HTTP_READ_AHEAD) {
+            DEBUG("Buffer drained, ACK " + unacknowledged_length + " bytes.");
+            client->ack(unacknowledged_length);
+            unacknowledged_length = 0;
+        }
     }
 
-    DEBUG("Reading " + length + " bytes, returning " + bytes_read);
+    //DEBUG("Reading " + length + " bytes, returning " + bytes_read);
 
     return bytes_read;
 }
@@ -238,6 +250,12 @@ void AsyncHTTPRequest::handleData(char* data, size_t length) {
         }
 
         case RECEIVING_BODY:
+            DEBUG("Received " + length + " bytes, buffer has " + responseBody->available() + ".");
+            if ((receivedDataHandler != nullptr || response_reader != nullptr) && responseBody->available() >= HTTP_READ_AHEAD) {
+                DEBUG("Delaying ACK of " + length + " bytes.");
+                client->ackLater();
+                unacknowledged_length += length;
+            }
             processBodyData(data, length);
             break;
 
@@ -813,7 +831,7 @@ size_t AsyncHTTPRequest::Reader::readBytes(char* data, size_t length) {
         auto lock = Lock(request->mutex);
 
         if (request->responseBody != nullptr) {
-            filled += request->responseBody->read(data + filled, length - filled);
+            filled += request->read_prelocked(data + filled, length - filled);
         }
 
         if (filled < length) {
