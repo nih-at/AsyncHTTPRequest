@@ -42,7 +42,7 @@
 typedef AsyncClient AsyncSSLClient;
 #endif
 
-#define HTTP_BUFFER_FRAGMENT_SIZE 512
+#define HTTP_BUFFER_FRAGMENT_SIZE 128 // 512
 
 class AsyncHTTPRequest {
 public:
